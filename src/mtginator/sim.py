@@ -1,11 +1,13 @@
 #!/usr/bin/env python
 
 import sys
+sys.path.insert(0,'/src/mtginator/')
 import os
-import mtginator.decks as decks
-import mtginator.game as game
+import decks
+import game
 
-DECKS_DIR = 'data/decks/'
+
+DECKS_DIR = './data/decks/'
 
 
 def run(turns, rounds, decks, goldfish=True):
@@ -32,16 +34,22 @@ def run(turns, rounds, decks, goldfish=True):
             print("After mulligans player %s has %s cards." % (player.name, len(player.hand)))
             print("%s" % ([str(c) for c in player.hand]))
         game_state = game.Game(ourplayers, maxturns=turns)
-        current_turn = 0
-        (first_player, second_player) = game_state.play_or_draw()
-        print("{} goes first".format(first_player.name))
-        print("{} goes second".format(second_player.name))
+        game_state.turn = 0
+        if not goldfish:
+            (first_player, second_player) = game_state.play_or_draw()
+            print("{} goes first".format(first_player.name))
+            print("{} goes second".format(second_player.name))
+            while(not game_state.is_over(turn=game_state.turn)):
+                game_state.turn += 1
+                print(game_state)
+                first_player.take_turn()
+                second_player.take_turn()
+        else: #single player only one player is taking turns
+            while(not game_state.is_over(turn=game_state.turn)):
+                game_state.turn += 1
+                print(game_state)
+                ourplayers[0].take_turn()
 
-        while(not game_state.is_over(turn=current_turn)):
-            current_turn += 1
-            print(game_state)
-            first_player.take_turn()
-            second_player.take_turn()
 
 
 def main():

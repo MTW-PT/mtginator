@@ -1,5 +1,7 @@
+import sys
+sys.path.insert(0,'/src/mtginator/')
 import random
-
+import cards
 
 class Game(object):
     ''' Object that represents the game/board state of a given game '''
@@ -24,7 +26,7 @@ class Game(object):
         if turn and turn > self.maxturns:
             return self.players
         for player in self.players:
-            if (player.life <= 0) or (player.poison <= 0) or (len(player.deck) == 0 and player in draw):
+            if (player.life <= 0) or (player.poison <= 0) or (len(player.deck.main) == 0 and player in draw):
                 losers.update(player)
 
         return list(losers)
@@ -38,7 +40,19 @@ class Game(object):
 class Mana(object):
     ''' Object that represents mana-producing board state of a player '''
     def __init__(self, board, extras=[]):
-        for permanent in board:
+        self.available_mana = []
+        #extras is a list of characters that represent mana already in the mana pool
+        #assume for now that player is only playing basic lands and no other mana sources
+        if len(extras) == 0:
+            self.available_mana[:] = []
+            for permanent in board:
+                if permanent.is_land() and not permanent.tapped:
+                    self.available_mana.append(cards.land_mana[permanent.name])
+            print self.available_mana
+
+
+
+
             
 class Player(object):
     ''' Object that represents a player of the game'''
@@ -61,7 +75,7 @@ class Player(object):
             if len(self.hand) and len(self.hand) < 5:
                 # keep all 4s
                 return True
-            elif len([c for c in self.hand if c.isLand()]) and len([c for c in self.hand if not c.isLand()]):
+            elif len([c for c in self.hand if c.is_land()]) and len([c for c in self.hand if not c.is_land()]):
                     # literally "lands and spells"
                     return True
             else:
@@ -92,11 +106,14 @@ class Player(object):
         self.make_play(plays)
 
     def land_drop(self):
-        lands = [c for c in self.hand if c.is_land]
-        pick = random.choice(lands)
-        # Note: should implment some color optimization
-        pick.play()
-        print("Played {} as Land for turn [ hand size: {} ]".format(pick, len(self.hand)))
+        lands = [c for c in self.hand if c.is_land()]
+        if len(lands) > 0:
+            pick = random.choice(lands)
+            # Note: should implment some color optimization
+            pick.play(None) #lands don't need context to play
+            self.battlefield.append(pick)
+            self.hand.remove(pick)
+            print("Played {} as Land for turn [ hand size: {} ]".format(pick, len(self.hand)))
 
     def cleanup(self):
         while(len(self.hand) > self.max_handsize):
@@ -104,16 +121,24 @@ class Player(object):
 
     def choose_discard(self):
         discard = self.hand.pop(random.randrange(len(self.hand)))
+        self.graveyard.append(discard)
+
         print("Dicarding {}".format(discard))
 
     def make_play(self, possible_plays):
-        card_to_play = random.choice(possible_plays)
-        card_to_play.play()
-        print("Playing {}".format(card_to_play))
+        if possible_plays:
+            card_to_play = random.choice(possible_plays)
+            card_to_play.play(cards.Context(self.battlefield))
+            self.hand.remove(card_to_play)
+            if card_to_play.is_permanent():
+                self.battlefield.append(card_to_play)
+            else:
+                self.graveyard.append(card_to_play)
+            print("Playing {}".format(card_to_play))
 
     def available_mana(self):
+        return Mana(self.battlefield)
         ''' return mana object based on board state '''
-        pass
 
     def reset(self):
         self.deck.main = self.deck.main + self.hand + self.graveyard + self.exile + self.battlefield
@@ -134,7 +159,7 @@ class Player(object):
             else:
                 print("Mulling to {}...".format(n))
         for i in range(0, n):
-            self.hand.append(self.deck.drawCard())
+            self.hand.append(self.deck.draw_card())
 
         while(not self._satisfied(rules, n)):
             self.mulligan(rules, n-1, verbose=verbose)
@@ -144,16 +169,20 @@ class Player(object):
 
     def enumerate_plays(self):
         ''' For a given hand (or metahand) and available mana, what plays are available to Player
-             Returns:  Set of Card objects
+             Returns:  List of Card objects
         '''
+        list_of_plays = []
         if not self.hand:
-            return set()
+            return list_of_plays
+
+        context = cards.Context(self.battlefield)
 
         for card in self.hand:
-            pass
-            # something like if card.can_play... add to list
+            if not card.is_land():
+                if context.can_pay(card.mana_cost):
+                    list_of_plays.append(card)
 
-        return {self.hand} 
+        return list_of_plays
 
     def __repr__(self):
         return("Name: {} Deck {} Life {} Poison {} #Cards-in-Hand {} WP% {}".format(self.name,

@@ -1,6 +1,8 @@
+import sys
+sys.path.insert(0,'/src/mtginator/')
 import random
 import json
-import mtginator.cards as cards
+import cards
 import re
 
 
@@ -64,7 +66,7 @@ class Deck(object):
 
 class CardDB(object):
     ''' this reads all MTG cards from JSON.  It should be memoized '''
-    def __init__(self, input_file='data/mtgjson/AllSets-x.json'):
+    def __init__(self, input_file='./data/AllSets-x.json'):
         self.all = json.load(open(input_file))
 
         hashed = {}
