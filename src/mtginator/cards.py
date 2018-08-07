@@ -68,7 +68,8 @@ class Cost(object):
 
     """
 
-    def __init__(self, fromString="", B=0, G=0, R=0, U=0, W=0, c=0, X=False):
+    def __init__(self, fromString="", B=0, G=0, R=0, U=0, W=0, C=0, gen=0, X=False):
+        # C = colorless gen = generic
         self.mana = {}
         if fromString:
             bracks = re.compile(r'[\{\}]')
@@ -88,11 +89,11 @@ class Cost(object):
                     else:
                         print("Unknown mana symbol: %s" % (symbol))
                         raise
-
         else:
             # warning does not handle hybrid/phyrexian use fromString!!!
             # does it handle wingding?
-            self.mana['generic'] = int(c)
+            self.mana['generic'] = int(gen)
+            self.mana['C'] = int(C)
             self.mana['B'] = int(B)
             self.mana['G'] = int(G)
             self.mana['R'] = int(R)
@@ -100,6 +101,105 @@ class Cost(object):
             self.mana['W'] = int(W)
             self.mana['X'] = X
 
+        for value in land_mana.values():
+            if value not in self.mana.keys():
+                self.mana[value] = 0
+
+    def add_costs(self,additional_costs):
+        for cost in additional_costs:
+            self.mana['generic'] += cost.mana['generic']
+            self.mana['C'] += cost.mana['C']
+            self.mana['B'] += cost.mana['B']
+            self.mana['G'] += cost.mana['G']
+            self.mana['R'] += cost.mana['R']
+            self.mana['U'] += cost.mana['U']
+            self.mana['W'] += cost.mana['W']
+            self.mana['X'] = self.mana['X'] or cost.mana['X']
+        return self
+
+class Context(object):
+    def __init__(self, battlefield, mana_pool):
+        self.available_mana = {}
+        self.battlefield = battlefield
+        #mana_pool is a list of characters that represent mana already in the mana pool
+        #assume for now that player is only playing basic lands and no other mana sources
+        if len(mana_pool) == 0:
+            for permanent in battlefield:
+                if permanent.is_land() and not permanent.tapped:
+                    if land_mana[permanent.name] in self.available_mana:
+                        self.available_mana[land_mana[permanent.name]] += 1
+                    else:
+                        self.available_mana[land_mana[permanent.name]] = 1
+        else:
+            print "floating mana is currently not implemented"
+        # need to initialize all basic colors
+        for value in land_mana.values():
+            if value not in self.available_mana.keys():
+                self.available_mana[value] = 0
+
+    def can_pay(self, cost):
+        if 'generic' in cost.mana.keys():
+            total_mana_needed = cost.mana['generic']
+        else:
+            total_mana_needed = 0
+        if 'B' in cost.mana.keys():
+            if cost.mana['B'] > self.available_mana['B']:
+                return False
+            else:
+                total_mana_needed += cost.mana['B']
+        if 'U' in cost.mana.keys():
+            if cost.mana['U'] > self.available_mana['U']:
+                return False
+            else:
+                total_mana_needed += cost.mana['U']
+        if 'C' in cost.mana.keys():
+            if cost.mana['C'] > self.available_mana['C']:
+                return False
+            else:
+                total_mana_needed += cost.mana['C']
+        if 'G' in cost.mana.keys():
+            if cost.mana['G'] > self.available_mana['G']:
+                return False
+            else:
+                total_mana_needed += cost.mana['G']
+        if 'R' in cost.mana.keys():
+            if cost.mana['R'] > self.available_mana['R']:
+                return False
+            else:
+                total_mana_needed += cost.mana['R']
+        if 'W' in cost.mana.keys():
+            if cost.mana['W'] > self.available_mana['W']:
+                return False
+            else:
+                total_mana_needed += cost.mana['W']
+        if (self.available_mana['B'] + self.available_mana['U'] + self.available_mana['C'] + self.available_mana['G'] + self.available_mana['R'] + self.available_mana['W']) < total_mana_needed:
+            return False
+        else:
+            return True
+
+    def pay(self, cost):
+        track_mana = {}
+        #first pass get tap all the colored mana
+        for permanent in self.battlefield:
+            if permanent.is_land() and not permanent.tapped:
+                if land_mana[permanent.name] in cost.mana:
+                    if land_mana[permanent.name] in track_mana:
+                        if track_mana[land_mana[permanent.name]] < cost.mana[land_mana[permanent.name]]:
+                            track_mana[land_mana[permanent.name]] += 1
+                            permanent.tapped = True
+                    else:
+                        track_mana[land_mana[permanent.name]] = 1
+                        permanent.tapped = True
+        if 'generic' not in cost.mana:
+            return True
+        #second pass tap random mana equal to generic mana
+        random_taps = 0
+        for permanent in self.battlefield:
+            if permanent.is_land() and not permanent.tapped:
+                permanent.tapped = True
+                random_taps += 1
+                if random_taps == cost.mana['generic']:
+                    return True
 
 class Card(object):
 
@@ -230,11 +330,18 @@ class Card(object):
 
     def play(self, context):
 
-        self.pay_cost(context)  # need some sort of game context object
-        self.zone = 'battlefield'
-        self.tapped = False
-        if self.cipt:
-            self.tapped = True
+        if context is None:
+            self.zone = 'battlefield'
+            self.tapped = False
+            if self.cipt:
+                self.tapped = True
+        else:
+            self.pay_cost(context)  # need some sort of game context object
+            self.zone = 'battlefield'
+            self.tapped = False
+            if self.cipt:
+                self.tapped = True
+
 
     def __repr__(self):
         return "[ %s (%s) ]" % (self.name, self.card_data.get('manaCost', '0'))
